@@ -1,6 +1,9 @@
 /*
 This program is hereby placed into the public domain.
 Of course the program is provided without warranty of any kind.
+
+Downloaded from http://www.lm-sensors.org/browser/i2c-tools/trunk/eepromer/eeprom.c
+
 */
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -10,7 +13,6 @@ Of course the program is provided without warranty of any kind.
 #include <fcntl.h>
 #include <string.h>
 #include <time.h>
-#include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 
 /*
@@ -24,7 +26,7 @@ Of course the program is provided without warranty of any kind.
 #define DEFAULT_EEPROM_ADDR  0x50         /* the 24C16 sits on i2c address 0x50 */
 #define DEFAULT_NUM_PAGES    8            /* we default to a 24C16 eeprom which has 8 pages */
 #define BYTES_PER_PAGE       256          /* one eeprom page is 256 byte */
-#define MAX_BYTES            8            /* max number of bytes to write in one chunk */
+#define MAX_BYTES            16            /* max number of bytes to write in one chunk */
        /* ... note: 24C02 and 24C01 only allow 8 bytes to be written in one chunk.   *
         *  if you are going to write 24C04,8,16 you can change this to 16            */
 
@@ -66,18 +68,16 @@ int eeprom_write(int fd,
 	i2cmsg.buf   = _buf;
 
 	if((i=ioctl(fd,I2C_RDWR,&msg_rdwr))<0){
-	    perror("ioctl()");
-	    fprintf(stderr,"ioctl returned %d\n",i);
+	    if ( len > 0 ) {
+	      perror("ioctl()");
+	      fprintf(stderr,"ioctl returned %d\n",i);
+            }
 	    return -1;
 	}
 
 	if(len>0)
 	    fprintf(stderr,"Wrote %d bytes to eeprom at 0x%02x, offset %08x\n",
 		    len,addr,offset);
-	else
-	    fprintf(stderr,"Positioned pointer in eeprom at 0x%02x to offset %08x\n",
-		    addr,offset);
-
 	return 0;
 }
 
@@ -139,6 +139,8 @@ int main(int argc, char **argv){
     int pages=DEFAULT_NUM_PAGES;
 
     int force=0; /* suppress warning on write! */
+    int wait = 0;
+    int acked = 0;
     
     while((i=getopt(argc,argv,"d:a:p:wyf:h"))>=0){
 	switch(i){
@@ -268,9 +270,23 @@ int main(int argc, char **argv){
 		for(j=0;j<sizeof(buf);j++)
 		    buf[j]=0;
 	    }
-            for(j=0;j<(BYTES_PER_PAGE/MAX_BYTES);j++)
+            for(j=0;j<(BYTES_PER_PAGE/MAX_BYTES);j++) {
 		if(eeprom_write(d,addr+i,j*MAX_BYTES,buf+(j*MAX_BYTES),MAX_BYTES)<0)
 		    exit(1);
+                fprintf(stderr,".");
+                for ( wait = 0; wait < 10; wait ++ ) {
+                  acked = eeprom_write(d,addr+i,j*MAX_BYTES,NULL,0);
+                  if ( acked == 0 )
+                    break;
+                  fprintf(stderr,".");
+                  usleep( 100 );
+                }
+                if ( acked != 0 ) {
+                  fprintf(stderr,"Ack of write operation timedout");
+                  exit ( 1 );
+                }
+                fprintf(stderr," acked \n");
+            }
 	} else {
             for(j=0;j<(BYTES_PER_PAGE/MAX_BYTES);j++)
 		if(eeprom_read(d,addr+i,j*MAX_BYTES,buf+(j*MAX_BYTES),MAX_BYTES)<0)

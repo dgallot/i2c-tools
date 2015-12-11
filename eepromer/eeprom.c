@@ -13,6 +13,7 @@ Downloaded from http://www.lm-sensors.org/browser/i2c-tools/trunk/eepromer/eepro
 #include <fcntl.h>
 #include <string.h>
 #include <time.h>
+#include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 
 /*
